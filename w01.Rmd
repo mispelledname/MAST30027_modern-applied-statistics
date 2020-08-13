@@ -1,0 +1,114 @@
+---
+title: "MAST30027: Lab 01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Question 1
+
+a) Load data and read descritopions for variables. 
+
+Data come from a study of breast cancer in Wisconsin. There are 681 cases of potentially cancerous tumors of which 238 are actually malignant. Determining whether a tumor is really malignant is traditionally determined by an invasive surgical procedure. The purpose of this study was to determine whether a new procedure called fine needle aspiration which draws only a small sample of tissue could be effective in determining tumor status.
+
+```{r}
+library(faraway)
+data(wbca) # breast cancer study 
+?wbca
+# Class = 1 if malignant
+# Class = 0 if benign
+str(wbca)
+```
+
+b) Fit binary regression model (logistic regression) using glm. Include all variables in the model. 
+
+```{r}
+# Class   = # successes
+# 1-Class = # failures
+# Bernoulli trials so n = 1
+logitmodel <- glm(cbind(Class, 1-Class) ~ ., family=binomial, data=wbca)
+summary(logitmodel)
+```
+
+c) Use the step function to search for model with minimum AIC. 
+
+```{r}
+reducedmodel = step(logitmodel, scope=~.)
+summary(reducedmodel)
+```
+
+d) Using the reduced model, use predict to estimate the outcome for a new patient with predictors 1, 1, 3, 1, 1, 4, 1.
+
+```{r}
+newdata = list(Adhes=1, BNucl=1, Chrom=3, Mitos=1, NNucl=1, Thick=4, UShap=1)
+predict(reducedmodel, newdata=newdata, type="response")
+
+# 95% CI
+(linearCI <- predict(reducedmodel, newdata=newdata, type="link", se.fit=TRUE))
+# transform back to response scale
+ilogit(c(linearCI$fit - 2* linearCI$se.fit, linearCI$fit, linearCI$fit + 2* linearCI$se.fit))
+
+# type = "response" for the response variable (between 0 and 1)
+# type = "link" needs to be put through the inverse of linking function (ilogit in this case)
+```
+
+e) Suppose we classify cancer as benign if $p > 0.5$ and malignant if $p < 0.5$. Compute number of errors of both types if the method is applied to the current data with the reduced model. 
+
+```{r}
+pfit <- predict(reducedmodel, type="response")
+
+# calculate the false positives
+# actually benign (!wbca$Class)
+# but classified as malignant (pfit < 0.5)
+(false_pos <- sum(pfit < 0.5 & !wbca$Class))
+
+# calculate the false negatives 
+# actually malignant (wbca$Class)
+# but classified as benign (pfit > 0.5)
+(false_neg <- sum(pfit > 0.5 & wbca$Class))
+```
+
+e) Suppose we classify cancer as benign if $p > 0.9$ and malignant if $p < 0.9$. Compute number of errors of both types if the method is applied to the current data with the reduced model. 
+
+```{r}
+pfit <- predict(reducedmodel, type="response")
+
+# calculate the false positives
+# actually benign but classified as malignant
+# as a proportion of all benign cases 
+(false_pos <- sum(pfit >= 0.9 & !wbca$Class) / sum(!wbca$Class))
+
+# calculate the false negatives 
+# actually malignant but classified as benign
+# as a proportion of all malignant cases
+(false_neg <- sum(pfit < 0.9 & wbca$Class) / sum(wbca$Class))
+```
+
+## Question 2
+
+The National Institute of Diabetes and Digestive and Kidney Diseases conducted a study on 768 adult female Pima Indians living near Phoenix. The purpose of the study was to investigate factors related to diabetes. The data may be found in the the dataset pima. Read the help file (?pima) to get a description of the predictor and response variables. There are missing observations for many variables, which have been recorded as zeros. The easiest (not necessarily the best) way to deal with these is to remove the relevant observations from the data set.
+
+```{r}
+# load data
+data(pima)
+?pima
+str(pima)
+```
+
+a) Fit a model with test as the response and all the other variables as predictors. 
+
+```{r}
+# test = test whether the patient shows signs of diabetes (0 if negative, 1 if positive)
+
+# remove missing data 
+missing <- with(pima, missing <- glucose==0 | diastolic==0 | triceps==0 | bmi == 0)
+pima <- pima[!missing,]
+
+# fit model
+fullmodel <- glm(cbind(test, 1-test) ~ ., data=pima, family=binomial)
+summary(fullmodel)
+```
+
