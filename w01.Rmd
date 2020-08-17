@@ -77,14 +77,19 @@ e) Suppose we classify cancer as benign if $p > 0.9$ and malignant if $p < 0.9$.
 pfit <- predict(reducedmodel, type="response")
 
 # calculate the false positives
-# actually benign but classified as malignant
-# as a proportion of all benign cases 
-(false_pos <- sum(pfit >= 0.9 & !wbca$Class) / sum(!wbca$Class))
+# actually benign (!wbca$Class)
+# but classified as malignant (pfit < 0.9)
+(false_pos <- sum(pfit < 0.9 & !wbca$Class))
 
 # calculate the false negatives 
-# actually malignant but classified as benign
-# as a proportion of all malignant cases
-(false_neg <- sum(pfit < 0.9 & wbca$Class) / sum(wbca$Class))
+# actually malignant (wbca$Class)
+# but classified as benign (pfit > 0.9)
+(false_neg <- sum(pfit > 0.9 & wbca$Class))
+
+# False Positives and False Negatives are inversely related 
+# Context determines the threshold
+# E.g. in medical field, do not want false negatives, 
+# even if this increases the false positives. 
 ```
 
 ## Question 2
@@ -105,10 +110,65 @@ a) Fit a model with test as the response and all the other variables as predicto
 
 # remove missing data 
 missing <- with(pima, missing <- glucose==0 | diastolic==0 | triceps==0 | bmi == 0)
-pima <- pima[!missing,]
+new_pima <- pima[!missing,]
 
 # fit model
-fullmodel <- glm(cbind(test, 1-test) ~ ., data=pima, family=binomial)
+fullmodel <- glm(cbind(test, 1-test) ~ ., data=new_pima, family=binomial)
 summary(fullmodel)
+```
+
+b) Do women who test positive have higher diastolic blood pressure? Is the diastolic blood pressure significant in the regression model? Give a confidence interval for your prediction. 
+
+```{r}
+# diastolic is the 3rc col, test is the 9th col
+cor(new_pima)[c(3,9),]
+summary(fullmodel)$coefficients
+```
+
+The predictor diastolic has a p-value of 0.3724, which means it is not significant in the presence of the other variables. 
+
+There is a positive correlation between diastolic and test, yet in the model diastolic has a negative coefficient. This is possible because diastolic is correlated with other (more significant) variables: the test is more likely to be positive when diastolic is large, but this is because glucose, triceps, bmi and age are all more likely to be large, and these all have the effect of increasing the chance of a positive test. 
+
+c) Predict outcome for a woman with predictor values (1, 99, 64, 22, 76, 27, 0.25, 25).
+
+```{r}
+(prediction <- predict(fullmodel, newdata=list(pregnant=1, glucose=99, diastolic=64, triceps=22, insulin=76, bmi=27, diabetes=0.25, age=25), type="link", se.fit=TRUE))
+ilogit(c(prediction$fit - 2 * prediction$se.fit, prediction$fit + 2 * prediction$se.fit))
+```
+
+# Question 3
+
+```{r}
+# load data and fit model
+library(faraway)
+data(orings)
+logitmod <- glm(cbind(damage, 6-damage) ~ temp, family=binomial, orings)
+
+# log-likelihood function
+logL <- function(beta, orings) {
+  eta <- cbind(1, orings$temp) %*% beta
+  return (sum(orings$damage*eta - 6*log(1 + exp(eta))))
+}
+
+# log-likelihood ratio for beta = c(a,b) against beta = betafit
+logLR <- function(a, b, betafit, orings) 2*logL(betafit, orings) - 2*logL(c(a, b), orings)
+
+# interested in c(a, b) such that f(a, b, ...) <= qchisq(0.95, 2)
+a_vec <- seq(2, 22, 0.1)
+b_vec <- seq(-0.4, -0.05, .005)
+z <- matrix(0, nrow=length(a_vec), ncol=length(b_vec))
+for (i in 1:length(a_vec)) {
+  for (j in 1:length(b_vec)) {
+    z[i,j] <- logLR(a_vec[i], b_vec[j], logitmod$coefficients, orings)
+  }
+}
+
+# a vectorised alternative for R afficionados
+# z <- outer(a_vec, b_vec, Vectorize(logLR, c("a", "b")), 
+#            betafit = logitmod$coefficients, orings = orings)
+
+# draw confidence region
+contour(a_vec, b_vec, z, levels = qchisq(0.95, 2), 
+        xlab="a", ylab="b", main="95% confidence region")
 ```
 
