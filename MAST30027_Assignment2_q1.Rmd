@@ -1,0 +1,106 @@
+---
+title: "MAST30027_Assignment2"
+author: "Zi Ng"
+date: "23/09/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(faraway)
+```
+
+# Question 1
+Read the data 
+```{r}
+data <- read.table(file ="assignment2_prob1.txt", header=TRUE)
+data$duration <- factor(data$duration, 
+                        levels=c("0-4","5-9","10-14","15-19","20-24","25-29"),
+                        ordered=TRUE)
+data$residence <- factor(data$residence, levels=c("Suva", "urban", "rural"))
+data$education <- factor(data$education, levels=c("none", "lower", "upper", "sec+"))
+data$fertility <- data$nChildren / data$nMother
+ftable(xtabs(cbind(nChildren,nMother,fertility) ~ duration + residence + education, data))
+```
+
+Data visualization
+```{r}
+par(mfrow=c(1,3))
+plot(data$fertility, data$duration)
+plot(data$fertility, data$residence)
+plot(data$fertility, data$education)
+with(data, pairs(fertility ~ duration + residence + education))
+```
+
+There are 70 women with 3 variables in the dataset. The relationship between the number of children and the duration, residence and education level or the women is of interest. Since the number of children a woman has is count data, it makes sense to fit a Poisson model. 
+
+Check pairwise relationships
+There seems to be interaction between the variables since the slope of the lines vary. 
+```{r}
+par(mfrow=c(1,3))
+with(data, interaction.plot(residence, duration, fertility))
+with(data, interaction.plot(education, duration, fertility))
+with(data, interaction.plot(residence, education, fertility))
+```
+
+Fit a Poisson model
+```{r}
+model = glm(nChildren ~ offset(log(nMother)) + duration + residence + education + duration*residence + duration*education + education*residence, family = poisson, data = data)
+summary(model)
+```
+
+Stepwise model selection based on the AIC
+```{r}
+model.step = step(model, scope = ~.)
+summary(model.step)
+```
+
+Significance of interaction
+```{r}
+anova(model, test="Chi")
+anova(model.step, test="Chi")
+```
+Interaction between the variables is not significant. 
+
+Checking linearity
+```{r}
+par(mfrow=c(1,2))
+
+```
+
+Checking for outliers or influential points
+```{r}
+par(mfrow=c(2,2))
+plot(residuals(model.step) ~ predict(model.step,type="response"))
+plot(residuals(model.step) ~ predict(model.step, type="link"))
+plot(residuals(model.step, type="pearson") ~ predict(model.step, type="link"))
+plot(residuals(model.step, type="response") ~ predict(model.step, type="link"))
+par(mfrow=c(2,2))
+plot(predict(model.step), residuals(model.step))
+halfnorm(residuals(model.step), ylab="residuals")
+halfnorm(rstudent(model.step), ylab="jacknife resid")
+halfnorm(cooks.distance(model.step), ylab="cooks dist")
+```
+From the response residuals vs linear fitted values plot, looks heteroskedastic. Observation 17 and 57 look quite influential. 
+
+Remove obs 57 (17 looks like it could possibly still belong on the smooth curve, however 57 is definitely out).
+```{r}
+model.subset = glm(nChildren ~ offset(log(nMother)) + duration + residence + education + duration*residence + duration*education + education*residence, family = poisson, data = data, subset = c(-57))
+summary(model.subset)
+model.subset.step = step(model.subset, scope=~.)
+summary(model.subset.step)
+```
+
+Check scaled deviance
+```{r}
+anova(model.subset.step)
+pchisq(deviance(model.subset.step), 58, lower.tail = FALSE)
+```
+Size of scaled deviance makes sense. 
+
+Check if there's overdispersion
+```{r}
+# estimate phi
+(phihat <- sum(residuals(model.subset.step, type="pearson")^2) / 58)
+```
+There is no overdispersion. 

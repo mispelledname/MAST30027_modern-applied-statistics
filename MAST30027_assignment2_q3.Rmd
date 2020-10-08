@@ -1,0 +1,136 @@
+---
+title: "MAST30027_Assignment2_q3"
+author: "Zi Ng"
+date: "24/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 3
+Read the data
+```{r}
+X = scan(file="assignment2_prob2.txt", what=double())
+X.more = scan(file="assignment2_prob3.txt", what=double()) 
+length(X)
+length(X.more)
+par(mfrow=c(2,2))
+hist(X, xlim=c(0,20), ylim=c(0,80))
+hist(X.more, xlim=c(0,20), ylim=c(0,80))
+hist(c(X,X.more), xlim=c(0,20), ylim=c(0,80), xlab="X + X.more", main = "Histogram of X + X.more")
+```
+
+Implementation
+```{r}
+mixture.EM = function(X, X.more, w.init, p.init, epsilon=1e-5, max.iter=100) {
+  
+  # initialize current parameter values
+  w.curr = w.init
+  p.curr = p.init
+  
+  # compute incomplete log=likelihoods using intial value of parameters. 
+  log_liks = c()
+  log_liks = c(log_liks, compute.log.lik(X, X.more, w.curr, p.curr)$ill)
+  
+  # change in incomplete log-likelihood
+  delta.ll = 1
+  
+  # number of iterations
+  n.iter = 1
+  
+  # If the log-likelihood has changed by less than epsilon, EM will stop
+  while ((delta.ll > epsilon) & (n.iter <= max.iter)) {
+    
+    # run the EM step 
+    EM.out = EM.iter(X, X.more, w.curr, p.curr)
+    
+    # replace the current parameter estimates
+    w.curr = EM.out$w.new
+    p.curr = EM.out$p.new
+    
+    # compute the change in incomplete log-likelihood 
+    log_liks = c(log_liks, compute.log.lik(X, X.more, w.curr, p.curr)$ill)
+    delta.ll = log_liks[length(log_liks)] - log_liks[length(log_liks) - 1]
+    
+    # increase the number of iterations
+    n.iter = n.iter + 1
+  }
+  return(list(w.curr=w.curr, p.curr=p.curr, log_liks=log_liks))
+}
+```
+
+
+EM iteration
+```{r}
+EM.iter = function(X, X.more, w.curr, p.curr) {
+
+  # E-step
+  prob.x.z = compute.prob.x.z(X, X.more, w.curr, p.curr)$prob.x.z
+  P_ik = prob.x.z / rowSums(prob.x.z)
+  
+  # M-step
+  w.new = colSums(P_ik) / sum(P_ik)
+  p.new = colSums(P_ik * X) / colSums(P_ik) / 20
+  p1.new = (colSums((P_ik * X)[seq(1,300),]) + sum(X.more)) / (20 * (colSums(P_ik[seq(1,300),]) + 100))
+  
+  return(list(w.new=w.new, p.new=c(p1.new, p.new[2], p.new[3])))
+}
+```
+
+Compute incomplete log-likelihoods 
+```{r}
+compute.log.lik = function(X, X.more, w.curr, p.curr) {
+  
+  # compute probabilities
+  print(p.curr)
+  prob.x.z = compute.prob.x.z(X, X.more, w.curr, p.curr)$prob.x.z
+  
+  # incomplete log-likelihoods
+  ill = sum(log(rowSums(prob.x.z)))
+  
+  return(list(ill=ill))
+}
+```
+
+Compute probabilities
+```{r}
+compute.prob.x.z = function(X, X.more, w.curr, p.curr) {
+
+  L = matrix(0, nrow=(length(X) + length(X.more)), ncol=length(w.curr)) 
+  # for (k in seq_len(ncol(L))) {
+  #   L[,k] = dbinom(X, size=20, prob=p.curr[k]) * w.curr[k]
+  # }
+  for (i in 1:length(X)) {
+    for (k in 1:ncol(L)) {
+      L[i,k] = dbinom(X[i], size=20, prob=p.curr[k]) * w.curr[k]
+    }
+  }
+  for (i in 1:length(X.more)) {
+    L[i+length(X),1] = dbinom(X.more[i], size=20, prob=p.curr[1])
+  }
+  return(list(prob.x.z=L))
+}
+```
+
+Apply the EM algorithm
+```{r}
+EM1 = mixture.EM(X, X.more, w.init=c(0.3,0.3,0.4), p.init=c(0.2, 0.5, 0.7))
+EM2 = mixture.EM(X, X.more, w.init=c(0.1,0.2,0.7), p.init=c(0.1, 0.3, 0.7))
+```
+
+Print results 
+```{r}
+print.results <- function(EM) {
+  print(paste("Estimate pi = (", round(EM$w.curr[1],2), ",", 
+            round(EM$w.curr[2],2), ",",
+            round(EM$w.curr[3],2), ")", sep=""))
+  print(paste("Estimate p = (", round(EM$p.curr[1],2), ",", 
+              round(EM$p.curr[2],2), ",",
+              round(EM$p.curr[3],2), ")", sep=""))
+  plot(EM$log_liks, ylab="incomplete log-likelihood", xlab="iteration")
+}
+print.results(EM1)
+print.results(EM2)
+```
